@@ -20,7 +20,8 @@ workspace:
   root: ~/code/symphony-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/openai/symphony .
+    git clone --depth 1 https://github.com/emilyw/symphony-opencode .
+    git remote add upstream https://github.com/openai/symphony
     if command -v mise >/dev/null 2>&1; then
       cd elixir && mise trust && mise exec -- mix deps.get
     fi
@@ -74,11 +75,11 @@ Instructions:
 2. Only stop early for a true blocker (missing required auth/permissions/secrets). If blocked, record it in the workpad and move the issue according to workflow.
 3. Final message must report completed actions and blockers only. Do not include "next steps for user".
 
-Work only in the provided repository copy. Do not touch any other path.
+Work only in the Working directory provided above. Never modify, commit, revert, or check out files outside of that directory.
 
-## Prerequisite: Linear MCP or `linear_graphql` tool is available
+## Linear access
 
-The agent should be able to talk to Linear, either via a configured Linear MCP server or injected `linear_graphql` tool. If none are present, stop and ask the user to configure Linear.
+Use the Linear API key provided above to interact with Linear via curl GraphQL calls. Do not require a `linear_graphql` tool or Linear MCP — use curl directly.
 
 ## Default posture
 
