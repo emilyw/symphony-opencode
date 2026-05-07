@@ -1027,9 +1027,13 @@ defmodule SymphonyElixir.StatusDashboard do
   defp format_number(value) when is_integer(value), do: format_count(value)
 
   defp format_number(value) when is_float(value) do
-    value
-    |> Float.round(2)
-    |> :erlang.float_to_binary(decimals: 2)
+    [int_part, decimal_part] =
+      value
+      |> Float.round(2)
+      |> :erlang.float_to_binary(decimals: 2)
+      |> String.split(".")
+
+    "#{group_thousands(int_part)}.#{decimal_part}"
   end
 
   defp map_value(map, keys) when is_map(map) and is_list(keys) do
