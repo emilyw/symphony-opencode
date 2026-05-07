@@ -27,6 +27,7 @@ hooks:
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:
+  provider: codex    # or: opencode
   max_concurrent_agents: 10
   max_turns: 20
 codex:
@@ -35,6 +36,11 @@ codex:
   thread_sandbox: workspace-write
   turn_sandbox_policy:
     type: workspaceWrite
+opencode:
+  command: opencode
+  port: 7777
+  turn_timeout_ms: 3600000
+  stall_timeout_ms: 300000
 ---
 
 You are working on a Linear ticket `{{ issue.identifier }}`
