@@ -20,10 +20,20 @@ defmodule SymphonyElixir.Config do
   {% endif %}
   """
 
+  @type agent_provider :: :codex | :opencode
+
   @type codex_runtime_settings :: %{
           approval_policy: String.t() | map(),
           thread_sandbox: String.t(),
-          turn_sandbox_policy: map()
+          turn_sandbox_policy: map(),
+          provider: agent_provider()
+        }
+
+  @type opencode_runtime_settings :: %{
+          port: integer(),
+          command: String.t(),
+          turn_timeout_ms: integer(),
+          stall_timeout_ms: integer()
         }
 
   @spec settings() :: {:ok, Schema.t()} | {:error, term()}
@@ -48,6 +58,15 @@ defmodule SymphonyElixir.Config do
     end
   end
 
+  @spec agent_provider() :: agent_provider()
+  def agent_provider do
+    case settings() do
+      {:ok, %{opencode: nil}} -> :codex
+      {:ok, %{opencode: opencode}} when opencode != nil -> :opencode
+      _ -> :codex
+    end
+  end
+
   @spec max_concurrent_agents_for_state(term()) :: pos_integer()
   def max_concurrent_agents_for_state(state_name) when is_binary(state_name) do
     config = settings!()
@@ -63,12 +82,17 @@ defmodule SymphonyElixir.Config do
 
   @spec codex_turn_sandbox_policy(Path.t() | nil) :: map()
   def codex_turn_sandbox_policy(workspace \\ nil) do
-    case Schema.resolve_runtime_turn_sandbox_policy(settings!(), workspace) do
-      {:ok, policy} ->
-        policy
-
-      {:error, reason} ->
-        raise ArgumentError, message: "Invalid codex turn sandbox policy: #{inspect(reason)}"
+    case agent_provider() do
+      :opencode ->
+        case Schema.resolve_runtime_turn_sandbox_policy(settings!(), workspace) do
+          {:ok, policy} -> policy
+          {:error, reason} -> raise ArgumentError, message: "Invalid opencode turn sandbox policy: #{inspect(reason)}"
+        end
+      :codex ->
+        case Schema.resolve_runtime_turn_sandbox_policy(settings!(), workspace) do
+          {:ok, policy} -> policy
+          {:error, reason} -> raise ArgumentError, message: "Invalid codex turn sandbox policy: #{inspect(reason)}"
+        end
     end
   end
 
@@ -108,9 +132,38 @@ defmodule SymphonyElixir.Config do
          %{
            approval_policy: settings.codex.approval_policy,
            thread_sandbox: settings.codex.thread_sandbox,
-           turn_sandbox_policy: turn_sandbox_policy
+           turn_sandbox_policy: turn_sandbox_policy,
+           provider: agent_provider()
          }}
       end
+    end
+  end
+
+  @spec agent_runtime_settings(Path.t() | nil, keyword()) ::
+          {:ok, %{
+            approval_policy: String.t() | map(),
+            thread_sandbox: String.t(),
+            turn_sandbox_policy: map(),
+            provider: agent_provider()
+          }} | {:error, term()}
+  def agent_runtime_settings(workspace \\ nil, opts \\ []) do
+    case agent_provider() do
+      :opencode -> opencode_runtime_settings(workspace, opts)
+      :codex -> codex_runtime_settings(workspace, opts)
+    end
+  end
+
+  @spec opencode_runtime_settings(Path.t() | nil, keyword()) ::
+          {:ok, opencode_runtime_settings()} | {:error, term()}
+  def opencode_runtime_settings(_workspace \\ nil, _opts \\ []) do
+    with {:ok, settings} <- settings() do
+      opencode = settings.opencode
+      {:ok, %{
+        port: opencode.port,
+        command: opencode.command,
+        turn_timeout_ms: opencode.turn_timeout_ms,
+        stall_timeout_ms: opencode.stall_timeout_ms
+      }}
     end
   end
 
