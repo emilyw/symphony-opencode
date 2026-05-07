@@ -3,8 +3,9 @@ defmodule SymphonyElixir.Opencode.Server do
   HTTP client for OpenCode server mode.
 
   OpenCode runs as a long-lived HTTP server. Each issue gets its own session.
-  Messages are sent synchronously — the POST /session/:id/message response
-  contains the full assistant reply in a `parts` array (no SSE needed).
+  Messages are sent via POST /session/:id/message, which returns immediately
+  with an empty body. Turn completion is detected by subscribing to the SSE
+  event stream at /event and waiting for session.status: idle.
   """
 
   require Logger
@@ -53,18 +54,19 @@ defmodule SymphonyElixir.Opencode.Server do
   @spec run_turn(session(), String.t(), map(), keyword()) :: {:ok, turn_result()} | {:error, term()}
   def run_turn(%{base_url: base_url, session_id: session_id, turn_timeout_ms: turn_timeout_ms} = _session, prompt, issue, opts \\ []) do
     on_message = Keyword.get(opts, :on_message, &default_on_message/1)
-    message_url = "#{base_url}/session/#{session_id}/message"
+    messages_url = "#{base_url}/session/#{session_id}/message"
+    event_url = "#{base_url}/event"
 
-    with {:ok, response} <- send_message(message_url, prompt, turn_timeout_ms),
-         {:ok, turn_id} <- extract_turn_id(response) do
+    with {:ok, known_ids} <- get_message_ids(messages_url),
+         {:ok, turn_id} <- post_and_wait_for_idle(event_url, messages_url, session_id, known_ids, prompt, turn_timeout_ms) do
       session_label = "#{session_id}-#{turn_id}"
       Logger.info("OpenCode turn completed for #{issue_context(issue)} session_id=#{session_label}")
 
-      emit_message(on_message, :turn_completed, %{session_id: session_label, turn_id: turn_id, payload: response}, %{})
+      emit_message(on_message, :turn_completed, %{session_id: session_label, turn_id: turn_id, payload: %{}}, %{})
 
       {:ok,
        %{
-         result: response,
+         result: %{},
          session_id: session_id,
          turn_id: turn_id
        }}
@@ -149,19 +151,183 @@ defmodule SymphonyElixir.Opencode.Server do
     end
   end
 
-  defp send_message(url, prompt, timeout_ms) do
-    body = %{"parts" => [%{"type" => "text", "text" => prompt}]}
+  defp get_message_ids(messages_url) do
+    case Req.get(messages_url) do
+      {:ok, %{status: 200, body: msgs}} when is_list(msgs) ->
+        ids = MapSet.new(msgs, fn m -> get_in(m, ["info", "id"]) end)
+        {:ok, ids}
 
-    case Req.post(url, json: body, receive_timeout: timeout_ms) do
-      {:ok, %{status: status, body: body}} when status in 200..201 -> {:ok, body}
-      {:ok, %{status: status, body: body}} -> {:error, {:http_error, status, inspect(body)}}
-      {:error, reason} -> {:error, {:send_message_failed, inspect(reason)}}
+      {:ok, _} ->
+        {:ok, MapSet.new()}
+
+      {:error, reason} ->
+        {:error, {:get_messages_failed, inspect(reason)}}
     end
   end
 
-  defp extract_turn_id(%{"info" => %{"id" => turn_id}}), do: {:ok, turn_id}
-  defp extract_turn_id(%{"id" => id}), do: {:ok, id}
-  defp extract_turn_id(body), do: {:error, {:unexpected_response, inspect(body)}}
+  # The POST /session/:id/message endpoint streams its response body while the LLM
+  # generates tokens, so Req.post blocks for the entire turn duration. We start
+  # the SSE listener concurrently before posting so we never miss the idle event.
+  defp post_and_wait_for_idle(event_url, messages_url, session_id, known_ids, prompt, timeout_ms) do
+    caller = self()
+    ref = make_ref()
+    deadline_ms = System.monotonic_time(:millisecond) + timeout_ms
+
+    sse_task =
+      Task.async(fn ->
+        result =
+          Req.get(event_url,
+            receive_timeout: timeout_ms + 120_000,
+            into: fn chunk, buffer ->
+              if System.monotonic_time(:millisecond) > deadline_ms do
+                {:halt, buffer}
+              else
+                full = buffer <> chunk
+                {events, rest} = extract_sse_events(full)
+
+                idle =
+                  Enum.any?(events, fn
+                    %{
+                      "type" => "session.status",
+                      "properties" => %{
+                        "sessionID" => ^session_id,
+                        "status" => %{"type" => "idle"}
+                      }
+                    } ->
+                      true
+
+                    _ ->
+                      false
+                  end)
+
+                if idle do
+                  send(caller, {ref, :idle})
+                  {:halt, rest}
+                else
+                  {:cont, rest}
+                end
+              end
+            end
+          )
+
+        case result do
+          {:ok, _} -> send(caller, {ref, :sse_ended})
+          {:error, reason} -> send(caller, {ref, {:sse_error, reason}})
+        end
+      end)
+
+    post_task =
+      Task.async(fn ->
+        body = %{"parts" => [%{"type" => "text", "text" => prompt}]}
+
+        case Req.post(messages_url, json: body, receive_timeout: timeout_ms + 120_000) do
+          {:ok, %{status: status}} when status in 200..201 ->
+            send(caller, {ref, :post_ok})
+
+          {:ok, %{status: status, body: body}} ->
+            send(caller, {ref, {:post_error, {:http_error, status, inspect(body)}}})
+
+          {:error, reason} ->
+            send(caller, {ref, {:post_error, {:send_message_failed, inspect(reason)}}})
+        end
+      end)
+
+    remaining_ms = deadline_ms - System.monotonic_time(:millisecond)
+
+    result =
+      receive do
+        {^ref, :idle} ->
+          :completed
+
+        {^ref, :post_ok} ->
+          :completed
+
+        {^ref, :sse_ended} ->
+          {:error, :sse_stream_ended_without_idle}
+
+        {^ref, {:sse_error, reason}} ->
+          {:error, {:sse_error, inspect(reason)}}
+
+        {^ref, {:post_error, reason}} ->
+          {:error, reason}
+      after
+        max(remaining_ms, 0) ->
+          {:error, :turn_timeout}
+      end
+
+    Task.shutdown(sse_task, :brutal_kill)
+    Task.shutdown(post_task, :brutal_kill)
+
+    case result do
+      :completed -> get_last_turn_id(messages_url, known_ids)
+      error -> error
+    end
+  end
+
+  defp extract_sse_events(buffer) do
+    parts = String.split(buffer, "\n\n")
+
+    case parts do
+      [] ->
+        {[], ""}
+
+      [_single] ->
+        {[], buffer}
+
+      multiple ->
+        complete = Enum.slice(multiple, 0..-2//1)
+        remainder = List.last(multiple)
+
+        events =
+          complete
+          |> Enum.flat_map(fn event_block ->
+            event_block
+            |> String.split("\n")
+            |> Enum.filter(&String.starts_with?(&1, "data: "))
+            |> Enum.map(fn line ->
+              json_str = String.trim_leading(line, "data: ")
+
+              case Jason.decode(json_str) do
+                {:ok, event} -> event
+                _ -> nil
+              end
+            end)
+            |> Enum.reject(&is_nil/1)
+          end)
+
+        {events, remainder}
+    end
+  end
+
+  defp get_last_turn_id(messages_url, known_ids) do
+    case Req.get(messages_url) do
+      {:ok, %{status: 200, body: msgs}} when is_list(msgs) ->
+        new_completed_assistant =
+          msgs
+          |> Enum.filter(fn m ->
+            info = m["info"]
+            msg_id = info["id"]
+            not MapSet.member?(known_ids, msg_id) &&
+              info["role"] == "assistant" &&
+              get_in(info, ["time", "completed"]) != nil
+          end)
+          |> List.last()
+
+        case new_completed_assistant do
+          nil ->
+            {:error, {:unexpected_response, "no new completed assistant message found after turn"}}
+
+          msg ->
+            {:ok, get_in(msg, ["info", "id"])}
+        end
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, {:http_error, status, inspect(body)}}
+
+      {:error, reason} ->
+        {:error, {:get_messages_failed, inspect(reason)}}
+    end
+  end
 
   defp emit_message(on_message, event, details, metadata) when is_function(on_message, 1) do
     message = metadata |> Map.merge(details) |> Map.put(:event, event) |> Map.put(:timestamp, DateTime.utc_now())

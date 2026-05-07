@@ -4,8 +4,8 @@ defmodule SymphonyElixir.AgentRunner do
   """
 
   require Logger
-  alias SymphonyElixir.{Codex.AppServer, Config, Linear.Issue, Opencode.Server, PromptBuilder,
-                        Tracker, Workspace}
+  alias SymphonyElixir.{Codex.AppServer, Config, Linear.Issue, PromptBuilder, Tracker, Workspace}
+  alias SymphonyElixir.Opencode.Server
 
   @type worker_host :: String.t() | nil
 
@@ -82,7 +82,7 @@ defmodule SymphonyElixir.AgentRunner do
 
     case Config.agent_provider() do
       :opencode ->
-        with {:ok, session} <- OpencodeServer.start_session(workspace, worker_host: worker_host) do
+        with {:ok, session} <- Server.start_session(workspace, worker_host: worker_host) do
           try do
             do_run_opencode_turns(
               session,
@@ -95,7 +95,7 @@ defmodule SymphonyElixir.AgentRunner do
               max_turns
             )
           after
-            OpencodeServer.stop_session(session)
+            Server.stop_session(session)
           end
         end
 
@@ -173,7 +173,7 @@ defmodule SymphonyElixir.AgentRunner do
     prompt = build_opencode_turn_prompt(workspace, issue, opts, turn_number, max_turns)
 
     with {:ok, turn_result} <-
-           OpencodeServer.run_turn(
+           Server.run_turn(
              opencode_session,
              prompt,
              issue,

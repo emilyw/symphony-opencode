@@ -37,7 +37,7 @@ codex:
 opencode:
   command: opencode
   port: 7777
-  turn_timeout_ms: 3600000
+  turn_timeout_ms: 10800000
   stall_timeout_ms: 0
 ---
 
