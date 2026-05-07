@@ -40,7 +40,7 @@ opencode:
   command: opencode
   port: 7777
   turn_timeout_ms: 3600000
-  stall_timeout_ms: 300000
+  stall_timeout_ms: 0
 ---
 
 You are working on a Linear ticket `{{ issue.identifier }}`
