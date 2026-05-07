@@ -86,10 +86,8 @@ defmodule SymphonyElixir.Opencode.Server do
 
   @spec stop_session(session()) :: :ok
   def stop_session(%{base_url: base_url, session_id: session_id}) do
-    case Tesla.delete("#{base_url}/session/#{session_id}") do
-      {:ok, _} -> :ok
-      _ -> :ok
-    end
+    Req.delete("#{base_url}/session/#{session_id}")
+    :ok
   rescue
     _ -> :ok
   end
@@ -137,45 +135,39 @@ defmodule SymphonyElixir.Opencode.Server do
   end
 
   defp check_server_ready(base_url) do
-    case Tesla.get(base_url <> "/health") do
+    case Req.get(base_url <> "/health") do
       {:ok, %{status: status}} when status in 200..299 ->
         {:ok, base_url}
 
-      _ ->
+      {:ok, _} ->
         {:error, :opencode_server_not_ready}
+
+      {:error, reason} ->
+        {:error, {:opencode_connection_failed, inspect(reason)}}
     end
-  rescue
-    e -> {:error, {:opencode_connection_failed, inspect(e)}}
   end
 
   defp create_session(base_url, workspace) do
-    case Tesla.post(base_url <> "/session", %{"cwd" => workspace}) do
+    case Req.post(base_url <> "/session", json: %{"cwd" => workspace}) do
       {:ok, %{status: status, body: %{"id" => session_id}}} when status in 200..201 ->
         {:ok, session_id}
 
       {:ok, %{status: status, body: body}} ->
         {:error, {:opencode_session_create_failed, status, inspect(body)}}
 
-      error ->
-        {:error, {:opencode_session_create_failed, inspect(error)}}
+      {:error, reason} ->
+        {:error, {:opencode_session_create_failed, inspect(reason)}}
     end
-  rescue
-    e -> {:error, {:opencode_session_create_failed, inspect(e)}}
   end
 
   defp send_message(url, prompt, issue) do
-    body = %{
-      "content" => prompt,
-      "title" => "#{issue.identifier}: #{issue.title}"
-    }
+    body = %{"content" => prompt, "title" => "#{issue.identifier}: #{issue.title}"}
 
-    case Tesla.post(url, body) do
+    case Req.post(url, json: body) do
       {:ok, %{status: status, body: body}} when status in 200..201 -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, {:http_error, status, inspect(body)}}
-      error -> {:error, {:send_message_failed, inspect(error)}}
+      {:error, reason} -> {:error, {:send_message_failed, inspect(reason)}}
     end
-  rescue
-    e -> {:error, {:send_message_failed, inspect(e)}}
   end
 
   defp extract_turn_id(%{"turnId" => turn_id}), do: {:ok, turn_id}
@@ -183,7 +175,11 @@ defmodule SymphonyElixir.Opencode.Server do
   defp extract_turn_id(body), do: {:error, {:unexpected_response, inspect(body)}}
 
   defp stream_events(session, events_url, _turn_id, on_message) do
-    case Tesla.get(events_url, headers: [{"Accept", "text/event-stream"}]) do
+    case Req.get(events_url,
+           headers: [{"Accept", "text/event-stream"}],
+           receive_timeout: session.turn_timeout_ms,
+           decode_body: false
+         ) do
       {:ok, %{status: 200, body: body}} ->
         result = parse_and_process_sse(to_string(body), on_message, session.stall_timeout_ms)
         {:ok, result}
@@ -191,11 +187,9 @@ defmodule SymphonyElixir.Opencode.Server do
       {:ok, %{status: status, body: body}} ->
         {:error, {:sse_stream_failed, status, inspect(body)}}
 
-      error ->
-        {:error, {:sse_stream_failed, inspect(error)}}
+      {:error, reason} ->
+        {:error, {:sse_stream_failed, inspect(reason)}}
     end
-  rescue
-    e -> {:error, {:sse_stream_failed, inspect(e)}}
   end
 
   defp parse_and_process_sse(body, on_message, _stall_timeout_ms) when is_binary(body) do
