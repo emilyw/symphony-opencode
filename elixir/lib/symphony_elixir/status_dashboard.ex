@@ -1018,6 +1018,7 @@ defmodule SymphonyElixir.StatusDashboard do
     end
   end
 
+  defp format_rate_limit_credits(other) when is_number(other), do: "credits #{format_number(other)}"
   defp format_rate_limit_credits(other), do: "credits #{to_string(other)}"
 
   defp format_reset_value(value) when is_integer(value), do: "#{format_count(value)}s"
