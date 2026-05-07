@@ -85,7 +85,16 @@ defmodule SymphonyElixir.AgentRunner do
       :opencode ->
         with {:ok, session} <- OpencodeServer.start_session(workspace, worker_host: worker_host) do
           try do
-            do_run_opencode_turns(session, workspace, issue, agent_update_recipient, opts, issue_state_fetcher, 1, max_turns)
+            do_run_opencode_turns(
+              session,
+              workspace,
+              issue,
+              agent_update_recipient,
+              opts,
+              issue_state_fetcher,
+              1,
+              max_turns
+            )
           after
             OpencodeServer.stop_session(session)
           end
@@ -94,7 +103,16 @@ defmodule SymphonyElixir.AgentRunner do
       :codex ->
         with {:ok, session} <- AppServer.start_session(workspace, worker_host: worker_host) do
           try do
-            do_run_codex_turns(session, workspace, issue, agent_update_recipient, opts, issue_state_fetcher, 1, max_turns)
+            do_run_codex_turns(
+              session,
+              workspace,
+              issue,
+              agent_update_recipient,
+              opts,
+              issue_state_fetcher,
+              1,
+              max_turns
+            )
           after
             AppServer.stop_session(session)
           end
