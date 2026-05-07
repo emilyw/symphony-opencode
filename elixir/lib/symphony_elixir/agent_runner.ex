@@ -144,7 +144,7 @@ defmodule SymphonyElixir.AgentRunner do
   end
 
   defp do_run_opencode_turns(opencode_session, workspace, issue, agent_update_recipient, opts, issue_state_fetcher, turn_number, max_turns) do
-    prompt = build_turn_prompt(issue, opts, turn_number, max_turns)
+    prompt = build_opencode_turn_prompt(workspace, issue, opts, turn_number, max_turns)
 
     with {:ok, turn_result} <-
            OpencodeServer.run_turn(
@@ -181,6 +181,32 @@ defmodule SymphonyElixir.AgentRunner do
           {:error, reason}
       end
     end
+  end
+
+  defp build_opencode_turn_prompt(workspace, issue, opts, 1, _max_turns) do
+    base = PromptBuilder.build_prompt(issue, opts)
+    api_key = Config.settings!().tracker.api_key
+
+    """
+    Working directory: #{workspace}
+
+    Linear API key: #{api_key}
+    (Use `curl -X POST https://api.linear.app/graphql -H "Authorization: #{api_key}" -H "Content-Type: application/json"` for all Linear operations.)
+
+    #{base}
+    """
+  end
+
+  defp build_opencode_turn_prompt(_workspace, _issue, _opts, turn_number, max_turns) do
+    """
+    Continuation guidance:
+
+    - The previous OpenCode turn completed normally, but the Linear issue is still in an active state.
+    - This is continuation turn ##{turn_number} of #{max_turns} for the current agent run.
+    - Resume from the current workspace and workpad state instead of restarting from scratch.
+    - The original task instructions and prior turn context are already present in this thread, so do not restate them before acting.
+    - Focus on the remaining ticket work and do not end the turn while the issue stays active unless you are truly blocked.
+    """
   end
 
   defp build_turn_prompt(issue, opts, 1, _max_turns), do: PromptBuilder.build_prompt(issue, opts)
