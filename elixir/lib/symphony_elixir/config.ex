@@ -88,6 +88,7 @@ defmodule SymphonyElixir.Config do
           {:ok, policy} -> policy
           {:error, reason} -> raise ArgumentError, message: "Invalid opencode turn sandbox policy: #{inspect(reason)}"
         end
+
       :codex ->
         case Schema.resolve_runtime_turn_sandbox_policy(settings!(), workspace) do
           {:ok, policy} -> policy
@@ -140,12 +141,14 @@ defmodule SymphonyElixir.Config do
   end
 
   @spec agent_runtime_settings(Path.t() | nil, keyword()) ::
-          {:ok, %{
-            approval_policy: String.t() | map(),
-            thread_sandbox: String.t(),
-            turn_sandbox_policy: map(),
-            provider: agent_provider()
-          }} | {:error, term()}
+          {:ok,
+           %{
+             approval_policy: String.t() | map(),
+             thread_sandbox: String.t(),
+             turn_sandbox_policy: map(),
+             provider: agent_provider()
+           }}
+          | {:error, term()}
   def agent_runtime_settings(workspace \\ nil, opts \\ []) do
     case agent_provider() do
       :opencode -> opencode_runtime_settings(workspace, opts)
@@ -158,12 +161,14 @@ defmodule SymphonyElixir.Config do
   def opencode_runtime_settings(_workspace \\ nil, _opts \\ []) do
     with {:ok, settings} <- settings() do
       opencode = settings.opencode
-      {:ok, %{
-        port: opencode.port,
-        command: opencode.command,
-        turn_timeout_ms: opencode.turn_timeout_ms,
-        stall_timeout_ms: opencode.stall_timeout_ms
-      }}
+
+      {:ok,
+       %{
+         port: opencode.port,
+         command: opencode.command,
+         turn_timeout_ms: opencode.turn_timeout_ms,
+         stall_timeout_ms: opencode.stall_timeout_ms
+       }}
     end
   end
 

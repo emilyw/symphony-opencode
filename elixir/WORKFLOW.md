@@ -22,9 +22,6 @@ hooks:
   after_create: |
     git clone --depth 1 https://github.com/emilyw/symphony-opencode .
     git remote add upstream https://github.com/openai/symphony
-    if command -v mise >/dev/null 2>&1; then
-      cd elixir && mise trust && mise exec -- mix deps.get
-    fi
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:
