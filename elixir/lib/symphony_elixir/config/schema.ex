@@ -478,6 +478,8 @@ defmodule SymphonyElixir.Config.Schema do
     end
   end
 
+  defp resolve_env_value(nil, fallback), do: fallback
+
   defp resolve_env_value(value, fallback) when is_binary(value) do
     case env_reference_name(value) do
       {:ok, env_name} ->
