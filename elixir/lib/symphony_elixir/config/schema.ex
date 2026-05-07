@@ -199,6 +199,30 @@ defmodule SymphonyElixir.Config.Schema do
     end
   end
 
+  defmodule Opencode do
+    @moduledoc false
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @primary_key false
+    embedded_schema do
+      field(:command, :string, default: "opencode")
+      field(:port, :integer, default: 7777)
+      field(:turn_sandbox_policy, :map)
+      field(:turn_timeout_ms, :integer, default: 3_600_000)
+      field(:stall_timeout_ms, :integer, default: 300_000)
+    end
+
+    @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
+    def changeset(schema, attrs) do
+      schema
+      |> cast(attrs, [:command, :port, :turn_sandbox_policy, :turn_timeout_ms, :stall_timeout_ms], empty_values: [])
+      |> validate_required([:command])
+      |> validate_number(:turn_timeout_ms, greater_than: 0)
+      |> validate_number(:stall_timeout_ms, greater_than_or_equal_to: 0)
+    end
+  end
+
   defmodule Hooks do
     @moduledoc false
     use Ecto.Schema
@@ -268,6 +292,7 @@ defmodule SymphonyElixir.Config.Schema do
     embeds_one(:worker, Worker, on_replace: :update, defaults_to_struct: true)
     embeds_one(:agent, Agent, on_replace: :update, defaults_to_struct: true)
     embeds_one(:codex, Codex, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:opencode, Opencode, on_replace: :update, defaults_to_struct: true)
     embeds_one(:hooks, Hooks, on_replace: :update, defaults_to_struct: true)
     embeds_one(:observability, Observability, on_replace: :update, defaults_to_struct: true)
     embeds_one(:server, Server, on_replace: :update, defaults_to_struct: true)
@@ -291,11 +316,14 @@ defmodule SymphonyElixir.Config.Schema do
 
   @spec resolve_turn_sandbox_policy(%__MODULE__{}, Path.t() | nil) :: map()
   def resolve_turn_sandbox_policy(settings, workspace \\ nil) do
-    case settings.codex.turn_sandbox_policy do
-      %{} = policy ->
-        policy
+    cond do
+      settings.opencode != nil and is_map(settings.opencode.turn_sandbox_policy) ->
+        settings.opencode.turn_sandbox_policy
 
-      _ ->
+      settings.codex != nil and is_map(settings.codex.turn_sandbox_policy) ->
+        settings.codex.turn_sandbox_policy
+
+      true ->
         workspace
         |> default_workspace_root(settings.workspace.root)
         |> expand_local_workspace_root()
@@ -306,11 +334,14 @@ defmodule SymphonyElixir.Config.Schema do
   @spec resolve_runtime_turn_sandbox_policy(%__MODULE__{}, Path.t() | nil, keyword()) ::
           {:ok, map()} | {:error, term()}
   def resolve_runtime_turn_sandbox_policy(settings, workspace \\ nil, opts \\ []) do
-    case settings.codex.turn_sandbox_policy do
-      %{} = policy ->
-        {:ok, policy}
+    cond do
+      settings.opencode != nil and is_map(settings.opencode.turn_sandbox_policy) ->
+        {:ok, settings.opencode.turn_sandbox_policy}
 
-      _ ->
+      settings.codex != nil and is_map(settings.codex.turn_sandbox_policy) ->
+        {:ok, settings.codex.turn_sandbox_policy}
+
+      true ->
         workspace
         |> default_workspace_root(settings.workspace.root)
         |> default_runtime_turn_sandbox_policy(opts)
@@ -360,6 +391,7 @@ defmodule SymphonyElixir.Config.Schema do
     |> cast_embed(:worker, with: &Worker.changeset/2)
     |> cast_embed(:agent, with: &Agent.changeset/2)
     |> cast_embed(:codex, with: &Codex.changeset/2)
+    |> cast_embed(:opencode, with: &Opencode.changeset/2)
     |> cast_embed(:hooks, with: &Hooks.changeset/2)
     |> cast_embed(:observability, with: &Observability.changeset/2)
     |> cast_embed(:server, with: &Server.changeset/2)
@@ -383,7 +415,17 @@ defmodule SymphonyElixir.Config.Schema do
         turn_sandbox_policy: normalize_optional_map(settings.codex.turn_sandbox_policy)
     }
 
-    %{settings | tracker: tracker, workspace: workspace, codex: codex}
+    opencode =
+      if settings.opencode do
+        %{
+          settings.opencode
+          | turn_sandbox_policy: normalize_optional_map(settings.opencode.turn_sandbox_policy)
+        }
+      else
+        settings.opencode
+      end
+
+    %{settings | tracker: tracker, workspace: workspace, codex: codex, opencode: opencode}
   end
 
   defp normalize_keys(value) when is_map(value) do
