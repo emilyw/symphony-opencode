@@ -178,11 +178,11 @@ defmodule SymphonyElixir.Opencode.Server do
         result =
           Req.get(event_url,
             receive_timeout: timeout_ms + 120_000,
-            into: fn chunk, buffer ->
+            into: fn {:data, chunk}, {_req, _resp} ->
               if System.monotonic_time(:millisecond) > deadline_ms do
-                {:halt, buffer}
+                {:halt, ""}
               else
-                full = buffer <> chunk
+                full = "" <> chunk
                 {events, rest} = extract_sse_events(full)
 
                 idle =
