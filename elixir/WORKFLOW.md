@@ -1,7 +1,6 @@
 ---
 tracker:
   kind: linear
-  api_key: "your-linear-api-key"
   project_slug: "your-project-slug"
   active_states:
     - Todo
@@ -27,8 +26,8 @@ hooks:
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:
-  provider: codex    # or: opencode
-  max_concurrent_agents: 10
+  provider: opencode    # or: opencode
+  max_concurrent_agents: 2
   max_turns: 20
 codex:
   command: codex --config shell_environment_policy.inherit=all --config 'model="gpt-5.5"' --config model_reasoning_effort=xhigh app-server
