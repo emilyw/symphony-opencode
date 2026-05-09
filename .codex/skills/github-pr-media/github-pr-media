@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Wrapper script for github-pr-media skill
+# Allows invocation as: github-pr-media --pr-url <url> [options]
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$SCRIPT_DIR/github_pr_media.py" "$@"
