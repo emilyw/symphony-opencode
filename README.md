@@ -36,6 +36,19 @@ help with the setup:
 
 ---
 
+## Skills
+
+The `.agent/` folder contains skills that can be used by coding agents (like Codex, Cline, etc.) to perform specialized tasks. These skills are standalone modules that agents can invoke during implementation runs.
+
+Skills are designed to be portable. To use a skill in your project:
+
+1. **For project-specific skills**: Copy the desired skill folder to your project's `.agents/skills/` directory
+2. **For global agent skills**: Copy to `~/.agents/skills/` or your agent's skills directory
+
+The skills are self-contained with their own `SKILL.md` documentation and any required scripts.
+
+---
+
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).

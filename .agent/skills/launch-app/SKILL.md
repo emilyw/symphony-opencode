@@ -2,16 +2,15 @@
 name: launch-app
 description:
   Start an app, validate the changed screen flow, and produce local evidence.
-  It does not upload anything. Use when you need to launch an application,
-  run Playwright-based validation, and capture diagnostics for debugging or
-  verification.
+  On success, uploads media to Linear via linear-comment-media skill.
 ---
 
 # Launch App
 
 ## Purpose
 
-Start the app, validate the changed screen flow, and produce local evidence without uploading anything.
+Start the app, validate the changed screen flow, and produce local evidence.
+On successful validation, uploads media to Linear via the linear-comment-media skill.
 
 ## Workflow
 
@@ -105,12 +104,18 @@ If validation passes:
    ```
 
 2. Capture clean success media:
-   - Video recording
-   - Final screenshot
-   - Optional trace
+    - Video recording
+    - Final screenshot
+    - Optional trace
 
-3. Return local artifact paths and validation summary
-4. Do NOT upload media
+3. Write `launch-output.json` with validation results
+
+4. Invoke `linear-comment-media` skill to upload media to Linear:
+   ```bash
+   linear-comment-media --launch-result launch-output.json
+   ```
+
+5. Return local artifact paths and validation summary
 
 ### Step 6: Output Contract
 
@@ -136,8 +141,9 @@ The skill returns a structured result:
 
 ## Implementation Notes
 
-- All artifacts remain local in `/tmp/playwright/` or similar temporary directories
-- No external upload operations are performed
+- All artifacts remain local in `./test-results/` within the project directory
+- This folder should be added to `.gitignore`
+- On success, media is uploaded to Linear via `linear-comment-media` skill
 - Port detection should handle common conflicts gracefully
 - The skill should work with any Playwright-supported browser (chromium by default)
 - Server logs should be captured to temporary files for tailing
