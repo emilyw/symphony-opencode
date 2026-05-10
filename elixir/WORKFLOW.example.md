@@ -20,8 +20,7 @@ workspace:
   root: ~/code/symphony-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/emilyw/symphony-opencode .
-    git remote add upstream https://github.com/openai/symphony
+    git clone --depth 1 https://github.com/ORG/REPO .
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:

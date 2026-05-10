@@ -1,0 +1,46 @@
+# App build
+/_build/
+/cover/
+
+# Dependencies
+/deps/
+
+# Generated files
+*.ez
+
+# Backup files
+*~
+.#*
+
+# Elixir
+.eex.*
+*.md.eex
+
+# Dialyzer
+/plts/
+
+# IEx
+.iex
+
+# Config (may contain secrets)
+opencode.json
+
+# Environment
+.env
+.env.local
+elixir/.env
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# Elixir Language Server
+.elixir_ls/
+
+# Workflows (may contain secrets/credentials)
+workflows/
